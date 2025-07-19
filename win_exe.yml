@@ -1,0 +1,70 @@
+name: Build Windows exe
+on: workflow_dispatch
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.24.2'
+
+      - name: Install project dependencies
+        run: flutter pub get
+
+      - name: Install Flutter distributor
+        run: dart pub global activate distributor
+
+      # --- Yahaan se Badlav Shuru Hain ---
+
+      - name: Set App Name in CMakeLists
+        run: |
+          $cmakeFile = "windows/runner/CMakeLists.txt"
+          (Get-Content $cmakeFile) -replace 'set\(BINARY_DISPLAY_NAME "Harmony Music"\)', 'set(BINARY_DISPLAY_NAME "Rhythm music")' | Set-Content $cmakeFile
+        shell: pwsh
+
+      - name: Set Window Title in main.cpp
+        run: |
+          $mainCppFile = "windows/runner/main.cpp"
+          (Get-Content $mainCppFile) -replace 'window.Create\(L"Harmony Music"', 'window.Create(L"Rhythm music"' | Set-Content $mainCppFile
+        shell: pwsh
+
+      # --- Badlav Yahaan Tak ---
+      
+      - name: Update lang data
+        run: dart localization/generator.dart
+
+      - name: Set update check flag to true
+        run: echo "const updateCheckFlag = true;" > lib/utils/update_check_flag_file.dart
+
+      - name: Build windows exe package
+        run: distributor package --platform windows --targets exe
+
+      # (Aapke signing waale steps yahaan se shuru honge...)
+      - name: Find first .exe file
+        id: find_exe
+        run: |
+          $lastSubDir = Get-ChildItem -Path "dist" -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          $exeFile = Get-ChildItem -Path "$($lastSubDir.FullName)/*.exe" | Select-Object -First 1
+          if ($exeFile) {
+            echo "Found .exe file: $($exeFile.FullName)"
+            echo "exe_path=$($exeFile.FullName)" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Error "No .exe files found in the dist directory."
+            exit 1
+          }
+        shell: pwsh
+
+      # ... (Aapke baaki ke signing steps) ...
+      
+      - name: Upload Windows exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rhythm music windows exe
+          path: "dist/**/*_signed.exe"
